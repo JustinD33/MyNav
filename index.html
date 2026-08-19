@@ -531,10 +531,19 @@ function addOverlays(){
   });
 }
 
-map.on('style.load', () => {
-  addOverlays();
-  if (!gpsStarted){ gpsStarted = true; startGPS(); }
+map.on('style.load', addOverlays);
+
+/* styledata fires for diffed style changes too, where style.load does not. */
+map.on('styledata', () => {
+  if (map.isStyleLoaded() && !map.getLayer('route-line')) addOverlays();
 });
+
+map.on('idle', () => {
+  if (map.isStyleLoaded() && !map.getLayer('route-line')) addOverlays();
+});
+
+/* Location is independent of the basemap — start it once, immediately. */
+if (!gpsStarted){ gpsStarted = true; startGPS(); }
 
 map.on('error', e => {
   if (ARCGIS_KEY && String(e.error && e.error.message).match(/40[13]|token/i))
@@ -817,7 +826,7 @@ function applyKey(k){
     if (ARCGIS_KEY) localStorage.setItem('mdt.arcgis', ARCGIS_KEY);
     else localStorage.removeItem('mdt.arcgis');
   }catch(e){ toast('Key valid this session only \u2014 storage blocked', 4200); }
-  map.setStyle(ARCGIS_KEY ? arcgisStyle(styleIx) : fallbackStyle);
+  map.setStyle(ARCGIS_KEY ? arcgisStyle(styleIx) : fallbackStyle, {diff:false});
 }
 
 $('#origin').textContent = location.origin || 'file:// (no origin)';
@@ -846,7 +855,7 @@ $('#k-close').onclick = () => $('#keysheet').classList.remove('on');
 $('#t-base').onclick = () => {
   if (!ARCGIS_KEY){ $('#t-key').click(); return; }
   styleIx = (styleIx + 1) % ARCGIS_STYLES.length;
-  map.setStyle(arcgisStyle(styleIx));
+  map.setStyle(arcgisStyle(styleIx), {diff:false});
   toast(ARCGIS_STYLES[styleIx][1]);
 };
 
