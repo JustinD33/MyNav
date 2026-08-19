@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MDT Navigation</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MDT">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.css" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.js"></script>
+<style>
+:root{
+  --bg:#0B0F14;
+  --panel:#131A22;
+  --panel-hi:#1B242F;
+  --line:#2A3644;
+  --ink:#E8EEF4;
+  --ink-dim:#8FA3B6;
+  --route:#2FB6FF;
+  --prio1:#F5A623;
+  --target:#FF453A;
+  --ok:#32D74B;
+  --safe-t:env(safe-area-inset-top,0px);
+  --safe-b:env(safe-area-inset-bottom,0px);
+  --safe-l:env(safe-area-inset-left,0px);
+  --safe-r:env(safe-area-inset-right,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  color:var(--ink);-webkit-text-size-adjust:100%}
+#map{position:absolute;inset:0}
+.maplibregl-ctrl-attrib{font-size:10px;background:rgba(11,15,20,.7)!important;color:var(--ink-dim)}
+.maplibregl-ctrl-attrib a{color:var(--ink-dim)}
+
+/* ---------- top: incident bar ---------- */
+#incident{
+  position:absolute;z-index:6;top:var(--safe-t);left:var(--safe-l);
+  width:252px;height:9px;background:var(--prio1);border-radius:0 0 3px 0
+}
+#prio,#incident-text,#unit{display:none}
+
+/* ---------- left: manoeuvre ---------- */
+#manoeuvre{
+  position:absolute;z-index:5;left:var(--safe-l);top:calc(var(--safe-t) + 9px);width:252px;
+  background:rgba(19,26,34,.95);border-radius:0 0 14px 0;
+  padding:16px 18px 18px;display:none
+}
+#manoeuvre.on{display:block}
+#turn-dist{font-size:44px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums;
+  letter-spacing:-.01em}
+#turn-dist span{font-size:19px;font-weight:500;color:var(--ink-dim);margin-left:4px}
+#arrow{width:52px;height:52px;stroke:var(--ink);stroke-width:6;fill:none;
+  stroke-linecap:round;stroke-linejoin:round;margin-top:14px;display:block}
+#turn-street{font-size:14px;color:var(--ink-dim);margin-top:10px;line-height:1.3}
+#limit{
+  position:absolute;z-index:6;left:calc(var(--safe-l) + 268px);top:calc(var(--safe-t) + 26px);
+  width:46px;height:46px;border-radius:50%;background:#F2F4F7;border:6px solid #D8232A;
+  color:#14181D;font-size:18px;font-weight:700;font-variant-numeric:tabular-nums;
+  display:none;align-items:center;justify-content:center
+}
+#limit.on{display:flex}
+
+/* ---------- bottom: trip data ---------- */
+#trip{
+  position:absolute;z-index:5;left:var(--safe-l);bottom:0;width:252px;
+  background:rgba(19,26,34,.95);border-radius:0 14px 0 0;
+  padding:14px 0 calc(var(--safe-b) + 0px)
+}
+#card-head{padding:0 16px 10px;font-size:11px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-dim)}
+#card-addr{padding:0 16px;font-size:16px;font-weight:600;line-height:1.25;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#bar{height:4px;margin:12px 16px 0;border-radius:2px;background:var(--line);overflow:hidden}
+#bar i{display:block;height:100%;width:0;background:var(--ok);border-radius:2px}
+.stats{display:flex;padding:12px 16px 14px;gap:10px}
+.stat{flex:1;min-width:0}
+.stat b{display:block;font-size:19px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
+.stat b i{font-style:normal;font-size:11px;font-weight:500;color:var(--ink-dim);margin-left:2px}
+.stat u{display:block;text-decoration:none;font-size:9px;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--ink-dim);margin-top:5px}
+#speed b{color:var(--ok)}
+#tabs{display:flex;border-top:1px solid var(--line)}
+.tab{flex:1;padding:12px 4px;text-align:center;font-size:10px;color:var(--ink-dim);
+  cursor:pointer;user-select:none;border-right:1px solid var(--line)}
+.tab:last-child{border-right:none}
+.tab.on{color:var(--route)}
+.tab svg{display:block;margin:0 auto 5px;width:17px;height:17px;stroke:currentColor;
+  stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- controls ---------- */
+#tools{position:absolute;z-index:5;left:calc(var(--safe-l) + 268px);top:calc(var(--safe-t) + 88px);
+  display:flex;flex-direction:column;gap:11px}
+.tool{width:52px;height:52px;border-radius:50%;background:rgba(19,26,34,.95);
+  border:1px solid var(--line);color:var(--ink);font-size:9px;font-weight:600;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  cursor:pointer;user-select:none}
+.tool:active{background:var(--panel-hi)}
+.tool.on{border-color:var(--route);color:var(--route)}
+.tool svg{width:21px;height:21px;stroke:currentColor;stroke-width:2;fill:none;
+  stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- search sheet ---------- */
+#sheet{position:absolute;inset:0;z-index:20;background:rgba(11,15,20,.97);
+  padding:calc(var(--safe-t) + 22px) 22px calc(var(--safe-b) + 22px);display:none;flex-direction:column}
+#sheet.on{display:flex}
+#sheet h2{margin:0 0 14px;font-size:13px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-dim)}
+#q{width:100%;padding:16px;font-size:19px;border-radius:11px;background:var(--panel);
+  border:1px solid var(--line);color:var(--ink);outline:none}
+#q:focus{border-color:var(--route)}
+#hits{flex:1;overflow-y:auto;margin-top:12px;-webkit-overflow-scrolling:touch}
+.hit{padding:15px 4px;border-bottom:1px solid var(--line);font-size:17px;cursor:pointer}
+.hit small{display:block;color:var(--ink-dim);font-size:13px;margin-top:3px}
+#close{margin-top:12px;padding:15px;text-align:center;border-radius:11px;
+  background:var(--panel);border:1px solid var(--line);font-size:16px;cursor:pointer}
+
+#keysheet{position:absolute;inset:0;z-index:21;background:rgba(11,15,20,.98);
+  padding:calc(var(--safe-t) + 22px) 22px calc(var(--safe-b) + 22px);display:none;
+  flex-direction:column;max-width:560px;margin:0 auto}
+#keysheet.on{display:flex}
+#keysheet h2{margin:0 0 14px;font-size:13px;letter-spacing:.11em;
+  text-transform:uppercase;color:var(--ink-dim)}
+#k{width:100%;padding:16px;font-size:16px;border-radius:11px;background:var(--panel);
+  border:1px solid var(--line);color:var(--ink);outline:none}
+#k:focus{border-color:var(--route)}
+.note{font-size:13px;line-height:1.5;color:var(--ink-dim);margin:14px 0 auto}
+.note b{color:var(--ink)}
+.row{display:flex;gap:10px;margin-bottom:10px}
+.btn{flex:1;padding:15px;text-align:center;border-radius:11px;background:var(--panel);
+  border:1px solid var(--line);font-size:16px;cursor:pointer;user-select:none}
+.btn:active{background:var(--panel-hi)}
+.btn.primary{background:var(--route);border-color:var(--route);color:#06131C;font-weight:600}
+
+#toast{position:absolute;z-index:30;left:50%;top:calc(var(--safe-t) + 78px);
+  transform:translateX(-50%);background:var(--panel);border:1px solid var(--line);
+  border-radius:9px;padding:11px 17px;font-size:14px;display:none;max-width:80%}
+#toast.on{display:block}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div id="incident">
+  <div id="prio">PRIO 1</div>
+  <div id="incident-text">
+    <div id="incident-class"></div>
+    <div id="incident-addr"></div>
+  </div>
+  <div id="unit"></div>
+</div>
+
+<div id="manoeuvre">
+  <div id="turn-dist">—<span>m</span></div>
+  <svg id="arrow" viewBox="0 0 48 48"><path d="M24 42 V14 M24 14 l-9 9 M24 14 l9 9"/></svg>
+  <div id="turn-street">—</div>
+</div>
+
+<div id="limit">50</div>
+
+<div id="tools">
+  <div class="tool" id="t-search">
+    <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M16 16l5 5"/></svg>
+    Dest
+  </div>
+  <div class="tool on" id="t-follow">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+    Follow
+  </div>
+  <div class="tool on" id="t-heading">
+    <svg viewBox="0 0 24 24"><path d="M12 3l7 17-7-4-7 4z"/></svg>
+    Head
+  </div>
+  <div class="tool" id="t-base">
+    <svg viewBox="0 0 24 24"><path d="M3 7l6-3 6 3 6-3v13l-6 3-6-3-6 3zM9 4v13M15 7v13"/></svg>
+    Base
+  </div>
+  <div class="tool" id="t-key">
+    <svg viewBox="0 0 24 24"><circle cx="8" cy="14" r="4"/><path d="M11 11l8-8M17 5l2 2M14 8l2 2"/></svg>
+    Key
+  </div>
+  <div class="tool on" id="t-voice">
+    <svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9zM16.5 8.5a5 5 0 010 7"/></svg>
+    Voice
+  </div>
+  <div class="tool" id="t-water">
+    <svg viewBox="0 0 24 24"><path d="M12 3s6 7 6 11a6 6 0 01-12 0c0-4 6-11 6-11z"/></svg>
+    Water
+  </div>
+</div>
+
+<div id="trip">
+  <div id="card-head">No incident</div>
+  <div id="card-addr">Choose a destination</div>
+  <div id="bar"><i></i></div>
+  <div class="stats">
+    <div class="stat" id="speed"><b>0<i>km/h</i></b><u>Speed</u></div>
+    <div class="stat"><b id="eta">—</b><u>ETA</u></div>
+    <div class="stat"><b id="left">—<i>km</i></b><u>Left</u></div>
+    <div class="stat"><b id="elapsed">0:00</b><u>Time</u></div>
+  </div>
+  <div id="tabs">
+    <div class="tab on"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Incident</div>
+    <div class="tab"><svg viewBox="0 0 24 24"><path d="M3 7l6-3 6 3 6-3v13l-6 3-6-3-6 3zM9 4v13M15 7v13"/></svg>Map</div>
+    <div class="tab"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>Status</div>
+  </div>
+</div>
+
+<div id="sheet">
+  <h2>Destination</h2>
+  <input id="q" type="search" placeholder="Address, place or postcode \u2014 anywhere" autocomplete="off" enterkeyhint="search">
+  <div id="hits"></div>
+  <div id="close">Cancel</div>
+</div>
+
+<div id="keysheet">
+  <h2>ArcGIS key</h2>
+  <input id="k" type="text" placeholder="Paste your API key" autocomplete="off"
+         autocapitalize="off" autocorrect="off" spellcheck="false">
+  <p class="note">Create one at location.arcgis.com. The key needs the
+     <b>basemaps</b> privilege. It stays on this device and is sent nowhere
+     except to Esri itself.</p>
+  <div class="row">
+    <div class="btn primary" id="k-save">Save</div>
+    <div class="btn" id="k-clear">Clear</div>
+  </div>
+  <div class="btn" id="k-close">Close</div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ============================================================
+   MDT-stijl navigatie — civiele demo.
+   Niet gebruiken voor spoedritten. Routes zijn gewone
+   verkeersroutes: geen busbanen, geen tegenrichting.
+   ============================================================ */
+
+const FONT = 'Noto Sans Regular', FONT_B = 'Noto Sans Bold';
+const TILES = 'https://tiles.openfreemap.org/planet';
+
+const road = (id, filter, color, widths) => ({
+  id, type:'line', source:'omt', 'source-layer':'transportation', filter,
+  layout:{'line-cap':'round','line-join':'round'},
+  paint:{'line-color':color,'line-width':{base:1.5,stops:widths}}
+});
+
+const fallbackStyle = {
+  version:8,
+  glyphs:'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
+  sources:{ omt:{type:'vector',url:TILES} },
+  layers:[
+    {id:'bg',type:'background',paint:{'background-color':'#0B0F14'}},
+    {id:'green',type:'fill',source:'omt','source-layer':'landcover',
+     filter:['in','class','wood','grass','park'],paint:{'fill-color':'#101A16'}},
+    {id:'water',type:'fill',source:'omt','source-layer':'water',
+     paint:{'fill-color':'#0E2230'}},
+    {id:'bld',type:'fill',source:'omt','source-layer':'building',minzoom:13,
+     paint:{'fill-color':'#1A222C','fill-outline-color':'#33414F'}},
+
+    road('r-minor',['in','class','minor','service','track'],'#3B4956',[[12,0.6],[14,1.6],[18,10]]),
+    road('r-sec',['in','class','secondary','tertiary'],'#59697A',[[10,0.8],[14,3],[18,16]]),
+    road('r-prim',['==','class','primary'],'#7A8B9C',[[8,1],[14,4],[18,20]]),
+    road('r-trunk',['in','class','trunk','motorway'],'#C9A227',[[6,1],[14,5],[18,24]]),
+
+    {id:'r-name',type:'symbol',source:'omt','source-layer':'transportation_name',minzoom:14,
+     layout:{'symbol-placement':'line','text-field':'{name}','text-font':[FONT],
+       'text-size':12,'text-letter-spacing':0.03},
+     paint:{'text-color':'#9FB2C4','text-halo-color':'#0B0F14','text-halo-width':1.4}},
+
+    {id:'hnr',type:'symbol',source:'omt','source-layer':'housenumber',minzoom:16.5,
+     layout:{'text-field':'{housenumber}','text-font':[FONT],'text-size':10},
+     paint:{'text-color':'#6E8093','text-halo-color':'#0B0F14','text-halo-width':1.2}},
+
+    {id:'place',type:'symbol',source:'omt','source-layer':'place',maxzoom:15,
+     filter:['in','class','city','town','village','suburb'],
+     layout:{'text-field':'{name}','text-font':[FONT_B],'text-size':13,
+       'text-letter-spacing':0.06,'text-transform':'uppercase'},
+     paint:{'text-color':'#C3D2E0','text-halo-color':'#0B0F14','text-halo-width':1.6}}
+  ]
+};
+
+/* ---------- basemap ----------
+   The ArcGIS key is entered in-app via the Key button.
+   Zonder key draait de kaart op OpenFreeMap.                       */
+let ARCGIS_KEY = '';
+try { ARCGIS_KEY = localStorage.getItem('mdt.arcgis') || ''; } catch(e){}
+
+const ARCGIS_STYLES = [
+  ['arcgis/navigation-night','Navigation night'],
+  ['arcgis/dark-gray',       'Dark grey'],
+  ['arcgis/streets-night',   'Streets night'],
+  ['arcgis/imagery',         'Imagery']
+];
+let styleIx = 0;
+
+const arcgisStyle = i =>
+  'https://basemapstyles-api.arcgis.com/arcgis/rest/services/styles/v2/styles/'
+  + ARCGIS_STYLES[i][0] + '?token=' + ARCGIS_KEY + '&language=en';
+
+const baseStyle = () => ARCGIS_KEY ? arcgisStyle(styleIx) : fallbackStyle;
+
+const map = new maplibregl.Map({
+  container:'map', style: baseStyle(), center:[8,30], zoom:2, pitch:0,
+  attributionControl:{compact:true}
+});
+
+/* ---------- state ---------- */
+let me = null, route = null, steps = [], stepIx = 0;
+let follow = true, headingUp = true, startedAt = null, spoken = -1, firstFix = true;
+
+const $ = s => document.querySelector(s);
+const toast = (t, ms=2600) => {
+  const el = $('#toast'); el.textContent = t; el.classList.add('on');
+  clearTimeout(toast._t); toast._t = setTimeout(()=>el.classList.remove('on'), ms);
+};
+function paint(srcId, data){
+  if (srcId === 'route') liveRoute = data;
+  if (srcId === 'dest') liveDest = data;
+  if (srcId === 'water-src') liveWater = data;
+  if (srcId === 'me-src') liveMe = data;
+  const s = map.getSource(srcId);
+  if (s) s.setData(data);
+}
+
+let imperial = false;
+const fmtDist = m => {
+  if (imperial){
+    const mi = m / 1609.344;
+    return mi >= 0.1 ? [mi.toFixed(mi < 10 ? 1 : 0), 'mi']
+                     : [Math.round(m * 1.09361 / 10) * 10, 'yd'];
+  }
+  return m >= 1000 ? [(m/1000).toFixed(m < 10000 ? 1 : 0), 'km']
+                   : [Math.round(m/10)*10, 'm'];
+};
+
+/* ---------- vehicle + route layers ---------- */
+/* Overlays must be re-added whenever the basemap style is swapped,
+   so they live in a function keyed to style.load rather than load. */
+const EMPTY = {type:'FeatureCollection',features:[]};
+let gpsStarted = false;
+let liveRoute = EMPTY, liveDest = EMPTY, liveWater = EMPTY, liveMe = EMPTY;
+
+function addOverlays(){
+  map.addSource('route', {type:'geojson', data:liveRoute});
+  map.addLayer({id:'route-halo',type:'line',source:'route',
+    layout:{'line-cap':'round','line-join':'round'},
+    paint:{'line-color':'#050A0F','line-width':13,'line-opacity':.8}});
+  map.addLayer({id:'route-line',type:'line',source:'route',
+    layout:{'line-cap':'round','line-join':'round'},
+    paint:{'line-color':'#2FB6FF','line-width':7}});
+
+  map.addSource('dest', {type:'geojson', data:liveDest});
+  map.addLayer({id:'dest-ring',type:'circle',source:'dest',
+    paint:{'circle-radius':13,'circle-color':'#FF453A','circle-opacity':.22,
+      'circle-stroke-width':3,'circle-stroke-color':'#FF453A'}});
+
+  map.addSource('water-src', {type:'geojson', data:liveWater});
+  map.addLayer({id:'water-pts',type:'circle',source:'water-src',
+    paint:{'circle-radius':6,'circle-color':'#2FB6FF','circle-stroke-width':2,
+      'circle-stroke-color':'#050A0F'}});
+
+  map.addSource('me-src', {type:'geojson', data:liveMe});
+  map.addLayer({id:'me-halo',type:'circle',source:'me-src',
+    paint:{'circle-radius':22,'circle-color':'#32D74B','circle-opacity':.14}});
+  map.addLayer({id:'me-dot',type:'circle',source:'me-src',
+    paint:{'circle-radius':8,'circle-color':'#32D74B','circle-stroke-width':3,
+      'circle-stroke-color':'#050A0F'}});
+}
+
+map.on('style.load', () => {
+  addOverlays();
+  if (!gpsStarted){ gpsStarted = true; startGPS(); }
+});
+
+map.on('error', e => {
+  if (ARCGIS_KEY && String(e.error && e.error.message).match(/40[13]|token/i))
+    toast('ArcGIS key rejected \u2014 falling back to OpenFreeMap', 5000);
+});
+
+map.on('dragstart', () => { follow = false; $('#t-follow').classList.remove('on'); });
+
+/* ---------- GPS ---------- */
+function startGPS(){
+  if (!navigator.geolocation) return toast('This device has no GPS');
+  navigator.geolocation.watchPosition(onFix,
+    e => toast('No GPS fix: ' + e.message, 4200),
+    {enableHighAccuracy:true, maximumAge:1000, timeout:12000});
+}
+
+function onFix(pos){
+  const c = pos.coords;
+  me = [c.longitude, c.latitude];
+  paint('me-src', {type:'Feature',geometry:{type:'Point',coordinates:me}});
+
+  const spd = (c.speed || 0) * (imperial ? 2.23694 : 3.6);
+  $('#speed b').innerHTML = Math.round(spd) + '<i>' + (imperial ? 'mph' : 'km/h') + '</i>';
+
+  if (firstFix){
+    firstFix = false;
+    map.jumpTo({center:me, zoom:16.5});
+    return;
+  }
+  if (follow){
+    map.easeTo({
+      center: me,
+      zoom: Math.max(map.getZoom(), 16.5),
+      bearing: (headingUp && c.heading != null && kmh > 3) ? c.heading : map.getBearing(),
+      pitch: headingUp ? 55 : 0,
+      duration: 900
+    });
+  }
+  if (route) advance();
+}
+
+/* ---------- search: PDOK Locatieserver ---------- */
+let searchTimer;
+$('#q').addEventListener('input', e => {
+  clearTimeout(searchTimer);
+  const q = e.target.value.trim();
+  if (q.length < 3) return $('#hits').innerHTML = '';
+  searchTimer = setTimeout(() => lookup(q), 280);
+});
+
+/* Photon (Komoot) geocodes the whole planet from OSM data, needs no key,
+   and is built for type-ahead. Results are biased to where you are. */
+async function lookup(q){
+  try{
+    let url = 'https://photon.komoot.io/api/?limit=8&lang=en&q=' + encodeURIComponent(q);
+    if (me) url += '&lat=' + me[1].toFixed(4) + '&lon=' + me[0].toFixed(4);
+    const feats = (await (await fetch(url)).json()).features || [];
+    $('#hits').innerHTML = feats.map(f => {
+      const p = f.properties, c = f.geometry.coordinates;
+      const line1 = [p.name, p.housenumber].filter(Boolean).join(' ')
+        || [p.street, p.housenumber].filter(Boolean).join(' ') || p.city || 'Unnamed';
+      const line2 = [p.street && p.name !== p.street ? p.street : null,
+                     p.city, p.state, p.country].filter(Boolean).join(', ');
+      return `<div class="hit" data-lon="${c[0]}" data-lat="${c[1]}">${line1}
+        <small>${line2 || (p.osm_value || '').replace(/_/g,' ')}</small></div>`;
+    }).join('') || '<div class="hit">No matches</div>';
+  }catch(err){
+    $('#hits').innerHTML = '<div class="hit">Search failed \u2014 check your connection</div>';
+  }
+}
+
+$('#hits').addEventListener('click', e => {
+  const hit = e.target.closest('.hit'); if (!hit || !hit.dataset.lon) return;
+  $('#sheet').classList.remove('on');
+  setDestination([+hit.dataset.lon, +hit.dataset.lat], hit.firstChild.textContent.trim());
+});
+
+/* ---------- routing: OSRM demo ---------- */
+/* Keep the screen on while navigating. Safari only grants this after a user
+   gesture, and drops it whenever the app is backgrounded, so re-request on
+   return to the foreground. */
+let wakeLock = null;
+async function keepAwake(){
+  if (!('wakeLock' in navigator)) return;
+  try { wakeLock = await navigator.wakeLock.request('screen'); }
+  catch(e){ /* denied or low battery — not fatal */ }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && route) keepAwake();
+});
+
+async function setDestination(dest, label){
+  if (voiceOn) primeVoice();
+  keepAwake();
+  $('#card-addr').textContent = label;
+  $('#card-head').textContent = 'En route';
+  paint('dest', {type:'Feature',geometry:{type:'Point',coordinates:dest}});
+
+  if (!me) return toast('Waiting for a GPS fix before routing', 4000);
+
+  toast('Calculating route\u2026');
+  try{
+    const url = `https://router.project-osrm.org/route/v1/driving/`
+      + `${me[0]},${me[1]};${dest[0]},${dest[1]}`
+      + `?overview=full&geometries=geojson&steps=true`;
+    const j = await (await fetch(url)).json();
+    if (!j.routes || !j.routes.length) return toast('No route found');
+
+    route = j.routes[0];
+    steps = route.legs[0].steps;
+    stepIx = 0; spoken = -1;
+    startedAt = startedAt || Date.now();
+
+    paint('route', {type:'Feature',geometry:route.geometry});
+    $('#manoeuvre').classList.add('on');
+    $('#toast').classList.remove('on');
+    paintTrip(route.distance, route.duration);
+    paintStep();
+  }catch(err){ toast('Routing server unreachable'); }
+}
+
+/* ---------- guidance ---------- */
+function metres(a, b){
+  const R = 6371000, rad = Math.PI/180;
+  const dLat = (b[1]-a[1])*rad, dLon = (b[0]-a[0])*rad;
+  const la1 = a[1]*rad, la2 = b[1]*rad;
+  const h = Math.sin(dLat/2)**2 + Math.cos(la1)*Math.cos(la2)*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h));
+}
+
+const ARROWS = {
+  'left':'M24 42 V22 Q24 14 16 14 H10 M10 14 l7-7 M10 14 l7 7',
+  'right':'M24 42 V22 Q24 14 32 14 H38 M38 14 l-7-7 M38 14 l-7 7',
+  'slight left':'M24 42 V26 L14 14 M14 14 h9 M14 14 v9',
+  'slight right':'M24 42 V26 L34 14 M34 14 h-9 M34 14 v9',
+  'straight':'M24 42 V14 M24 14 l-9 9 M24 14 l9 9',
+  'uturn':'M16 42 V22 Q16 12 26 12 Q36 12 36 22 V30 M36 30 l-6-6 M36 30 l6-6'
+};
+const WORDS = {
+  'left':'Turn left','right':'Turn right','slight left':'Bear left',
+  'slight right':'Bear right','straight':'Continue straight','uturn':'Make a U-turn'
+};
+
+function stepKey(s){
+  const t = s.maneuver.type, m = s.maneuver.modifier || 'straight';
+  if (t === 'arrive') return 'arrive';
+  if (m.includes('uturn')) return 'uturn';
+  if (ARROWS[m]) return m;
+  return 'straight';
+}
+
+function paintStep(){
+  const s = steps[stepIx]; if (!s) return;
+  const k = stepKey(s);
+  $('#arrow').firstElementChild.setAttribute('d', ARROWS[k] || ARROWS.straight);
+  const [n, u] = fmtDist(s.distance);
+  $('#turn-dist').innerHTML = n + '<span>' + u + '</span>';
+  $('#turn-street').textContent = k === 'arrive'
+    ? 'Destination reached'
+    : (WORDS[k] || 'Continue straight') + (s.name ? ' \u2014 ' + s.name : '');
+}
+
+function advance(){
+  const s = steps[stepIx]; if (!s || !me) return;
+  const end = s.maneuver.location;
+  const d = metres(me, end);
+
+  const [n, u] = fmtDist(d);
+  $('#turn-dist').innerHTML = n + '<span>' + u + '</span>';
+
+  if (d < 260 && spoken !== stepIx){ speak(s, d); spoken = stepIx; }
+  if (d < 28 && stepIx < steps.length - 1){ stepIx++; spoken = -1; paintStep(); }
+
+  let left = d;
+  for (let i = stepIx + 1; i < steps.length; i++) left += steps[i].distance;
+  paintTrip(left, left / 11.5);
+}
+
+function unitSay(d){
+  if (imperial){
+    const yd = d * 1.09361;
+    return yd >= 300 ? (d/1609.344).toFixed(1) + ' miles' : Math.round(yd/50)*50 + ' yards';
+  }
+  return d >= 1000 ? (d/1000).toFixed(1) + ' kilometres' : Math.round(d/50)*50 + ' metres';
+}
+
+function speak(s, d){
+  if (!voiceOn || !window.speechSynthesis) return;
+  const k = stepKey(s);
+  const txt = k === 'arrive'
+    ? 'Destination reached'
+    : `In ${unitSay(d)}, ${(WORDS[k] || 'continue straight').toLowerCase()}`;
+  const u = new SpeechSynthesisUtterance(txt);
+  u.lang = 'en-GB'; u.rate = 1.05;
+  speechSynthesis.speak(u);
+}
+
+function paintTrip(distM, durS){
+  if (route && route.distance){
+    const done = Math.max(0, Math.min(1, 1 - distM / route.distance));
+    $('#bar i').style.width = (done * 100).toFixed(1) + '%';
+  }
+  const [n, u] = fmtDist(distM);
+  $('#left').innerHTML = n + '<i>' + u + '</i>';
+  const eta = new Date(Date.now() + durS * 1000);
+  $('#eta').textContent = eta.toTimeString().slice(0,5);
+}
+
+setInterval(() => {
+  if (!startedAt) return;
+  const s = Math.floor((Date.now() - startedAt)/1000);
+  $('#elapsed').textContent = Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
+}, 1000);
+
+/* ---------- bluswater via Overpass ---------- */
+async function loadWater(){
+  const b = map.getBounds();
+  const bbox = [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].map(v=>v.toFixed(4)).join(',');
+  const q = `[out:json][timeout:20];(node["emergency"~"fire_hydrant|suction_point|water_tank"](${bbox}););out body 400;`;
+  toast('Fetching water supply\u2026');
+  try{
+    const j = await (await fetch('https://overpass-api.de/api/interpreter',
+      {method:'POST', body:'data=' + encodeURIComponent(q)})).json();
+    paint('water-src', {
+      type:'FeatureCollection',
+      features:(j.elements||[]).map(e=>({type:'Feature',
+        geometry:{type:'Point',coordinates:[e.lon,e.lat]},properties:e.tags||{}}))
+    });
+    toast((j.elements||[]).length + ' points in view');
+  }catch(err){ toast('Overpass unreachable'); }
+}
+
+/* ---------- controls ---------- */
+$('#t-search').onclick = () => { $('#sheet').classList.add('on'); $('#q').focus(); };
+$('#close').onclick = () => $('#sheet').classList.remove('on');
+
+$('#t-follow').onclick = e => {
+  follow = !follow; e.currentTarget.classList.toggle('on', follow);
+  if (follow && me) map.easeTo({center:me, zoom:16.5, duration:700});
+};
+$('#t-heading').onclick = e => {
+  headingUp = !headingUp; e.currentTarget.classList.toggle('on', headingUp);
+  if (!headingUp) map.easeTo({bearing:0, pitch:0, duration:700});
+};
+function applyKey(k){
+  ARCGIS_KEY = k.trim();
+  try{
+    if (ARCGIS_KEY) localStorage.setItem('mdt.arcgis', ARCGIS_KEY);
+    else localStorage.removeItem('mdt.arcgis');
+  }catch(e){ toast('Key valid this session only \u2014 storage blocked', 4200); }
+  map.setStyle(ARCGIS_KEY ? arcgisStyle(styleIx) : fallbackStyle);
+}
+
+$('#t-key').onclick = () => {
+  $('#k').value = ARCGIS_KEY;
+  $('#keysheet').classList.add('on');
+  $('#k').focus();
+};
+$('#k-save').onclick = () => {
+  const v = $('#k').value.trim();
+  if (!v) return toast('No key entered yet');
+  applyKey(v);
+  $('#keysheet').classList.remove('on');
+  toast('Esri basemap active');
+};
+$('#k-clear').onclick = () => {
+  $('#k').value = '';
+  applyKey('');
+  toast('Back on OpenFreeMap');
+};
+$('#k-close').onclick = () => $('#keysheet').classList.remove('on');
+
+$('#t-base').onclick = () => {
+  if (!ARCGIS_KEY){ $('#t-key').click(); return; }
+  styleIx = (styleIx + 1) % ARCGIS_STYLES.length;
+  map.setStyle(arcgisStyle(styleIx));
+  toast(ARCGIS_STYLES[styleIx][1]);
+};
+
+/* iOS will not let a page speak unless speech has been triggered by a tap at
+   least once, so the first tap on Voice doubles as the unlock. */
+let voiceOn = true, voicePrimed = false;
+try { voiceOn = localStorage.getItem('mdt.voice') !== 'off'; } catch(e){}
+$('#t-voice').classList.toggle('on', voiceOn);
+
+function primeVoice(){
+  if (voicePrimed || !window.speechSynthesis) return;
+  voicePrimed = true;
+  const u = new SpeechSynthesisUtterance('Voice guidance on');
+  u.lang = 'en-GB'; u.volume = 0.6;
+  speechSynthesis.speak(u);
+}
+
+$('#t-voice').onclick = e => {
+  voiceOn = !voiceOn;
+  e.currentTarget.classList.toggle('on', voiceOn);
+  try { localStorage.setItem('mdt.voice', voiceOn ? 'on' : 'off'); } catch(err){}
+  if (voiceOn) primeVoice();
+  else { if (window.speechSynthesis) speechSynthesis.cancel(); toast('Voice guidance off'); }
+};
+
+$('#speed').onclick = () => {
+  imperial = !imperial;
+  toast(imperial ? 'Imperial \u2014 miles and mph' : 'Metric \u2014 kilometres and km/h');
+  if (route) advance(); else paintTrip(0, 0);
+};
+
+let waterOn = false;
+$('#t-water').onclick = e => {
+  waterOn = !waterOn; e.currentTarget.classList.toggle('on', waterOn);
+  if (waterOn) loadWater();
+  else paint('water-src', EMPTY);
+};
+
+/* long-press map to drop a destination */
+let press;
+map.on('mousedown touchstart', e => {
+  press = setTimeout(() => setDestination([e.lngLat.lng, e.lngLat.lat], 'Dropped pin'), 650);
+});
+['mouseup','touchend','dragstart','move'].forEach(ev => map.on(ev, () => clearTimeout(press)));
+</script>
+</body>
+</html>
