@@ -445,12 +445,14 @@ function chevronIcon(){
    fontstack the loaded basemap already uses, or our overlay labels request
    glyphs that basemap's server has never heard of and render as nothing. */
 function styleFont(){
-  const layers = (map.getStyle() || {}).layers || [];
-  for (const l of layers){
-    const f = l.layout && l.layout['text-font'];
-    if (f && f.length && !Array.isArray(f[0])) return f;
-  }
-  return ['Noto Sans Regular'];
+  try{
+    const layers = (map.getStyle() || {}).layers || [];
+    for (const l of layers){
+      const f = l.layout && l.layout['text-font'];
+      if (Array.isArray(f) && f.length && typeof f[0] === 'string') return f;
+    }
+  }catch(e){}
+  return null;   // null => let MapLibre use the style's own default
 }
 
 function reset(ids, srcs){
@@ -458,57 +460,75 @@ function reset(ids, srcs){
   srcs.forEach(id => { if (map.getSource(id)) map.removeSource(id); });
 }
 
+let overlayWarned = false;
+function group(name, fn){
+  try { fn(); }
+  catch(e){
+    if (!overlayWarned){ toast(name + ' layer failed: ' + e.message, 9000); overlayWarned = true; }
+    console.error('[overlay] ' + name, e);
+  }
+}
+
 function addOverlays(){
   reset(['hn-overlay','route-halo','route-case','route-line','route-arrows',
          'dest-ring','water-pts','me-acc','me-puck'],
         ['hn-src','route','dest','water-src','me-src']);
 
-  if (!map.hasImage('puck')) map.addImage('puck', puckIcon());
-  if (!map.hasImage('chev')) map.addImage('chev', chevronIcon());
+  group('icon', () => {
+    if (!map.hasImage('puck')) map.addImage('puck', puckIcon());
+    if (!map.hasImage('chev')) map.addImage('chev', chevronIcon());
+  });
 
-  map.addSource('hn-src', {type:'vector', url:'https://tiles.openfreemap.org/planet'});
-  map.addLayer({id:'hn-overlay',type:'symbol',source:'hn-src',
-    'source-layer':'housenumber',minzoom:16.5,
-    layout:{'text-field':['get','housenumber'],'text-font':styleFont(),
-      'text-size':10.5,'text-padding':1},
-    paint:{'text-color':'#D2DEEA','text-halo-color':'rgba(2,8,14,.9)',
-      'text-halo-width':1.5}});
+  group('house number', () => {
+    map.addSource('hn-src', {type:'vector', url:'https://tiles.openfreemap.org/planet'});
+    const lay = {'text-field':['get','housenumber'],'text-size':10.5,'text-padding':1};
+    const f = styleFont();
+    if (f) lay['text-font'] = f;
+    map.addLayer({id:'hn-overlay',type:'symbol',source:'hn-src',
+      'source-layer':'housenumber',minzoom:16.5,layout:lay,
+      paint:{'text-color':'#D2DEEA','text-halo-color':'rgba(2,8,14,.9)',
+        'text-halo-width':1.5}});
+  });
 
-  map.addSource('route', {type:'geojson', data:liveRoute});
-  map.addLayer({id:'route-halo',type:'line',source:'route',
-    layout:{'line-cap':'round','line-join':'round'},
-    paint:{'line-color':'#02141F','line-width':17,'line-opacity':.55}});
-  map.addLayer({id:'route-case',type:'line',source:'route',
-    layout:{'line-cap':'round','line-join':'round'},
-    paint:{'line-color':'#FFFFFF','line-width':13,'line-opacity':.95}});
-  map.addLayer({id:'route-line',type:'line',source:'route',
-    layout:{'line-cap':'round','line-join':'round'},
-    paint:{'line-color':'#1A73E8','line-width':8}});
+  group('route', () => {
+    map.addSource('route', {type:'geojson', data:liveRoute});
+    map.addLayer({id:'route-halo',type:'line',source:'route',
+      layout:{'line-cap':'round','line-join':'round'},
+      paint:{'line-color':'#02141F','line-width':17,'line-opacity':.55}});
+    map.addLayer({id:'route-case',type:'line',source:'route',
+      layout:{'line-cap':'round','line-join':'round'},
+      paint:{'line-color':'#FFFFFF','line-width':13,'line-opacity':.95}});
+    map.addLayer({id:'route-line',type:'line',source:'route',
+      layout:{'line-cap':'round','line-join':'round'},
+      paint:{'line-color':'#1A73E8','line-width':8}});
 
-  map.addLayer({id:'route-arrows',type:'symbol',source:'route',
-    layout:{'symbol-placement':'line','symbol-spacing':72,
-      'icon-image':'chev','icon-size':0.5,
-      'icon-rotation-alignment':'map','icon-allow-overlap':true,
-      'icon-ignore-placement':true},
-    paint:{'icon-opacity':0.95}});
+    map.addLayer({id:'route-arrows',type:'symbol',source:'route',
+      layout:{'symbol-placement':'line','symbol-spacing':72,
+        'icon-image':'chev','icon-size':0.5,
+        'icon-rotation-alignment':'map','icon-allow-overlap':true,
+        'icon-ignore-placement':true},
+      paint:{'icon-opacity':0.95}});
+  });
 
-  map.addSource('dest', {type:'geojson', data:liveDest});
-  map.addLayer({id:'dest-ring',type:'circle',source:'dest',
-    paint:{'circle-radius':13,'circle-color':'#FF453A','circle-opacity':.22,
-      'circle-stroke-width':3,'circle-stroke-color':'#FF453A'}});
+  group('markers', () => {
+    map.addSource('dest', {type:'geojson', data:liveDest});
+    map.addLayer({id:'dest-ring',type:'circle',source:'dest',
+      paint:{'circle-radius':13,'circle-color':'#FF453A','circle-opacity':.22,
+        'circle-stroke-width':3,'circle-stroke-color':'#FF453A'}});
 
-  map.addSource('water-src', {type:'geojson', data:liveWater});
-  map.addLayer({id:'water-pts',type:'circle',source:'water-src',
-    paint:{'circle-radius':6,'circle-color':'#2FB6FF','circle-stroke-width':2,
-      'circle-stroke-color':'#050A0F'}});
+    map.addSource('water-src', {type:'geojson', data:liveWater});
+    map.addLayer({id:'water-pts',type:'circle',source:'water-src',
+      paint:{'circle-radius':6,'circle-color':'#2FB6FF','circle-stroke-width':2,
+        'circle-stroke-color':'#050A0F'}});
 
-  map.addSource('me-src', {type:'geojson', data:liveMe});
-  map.addLayer({id:'me-acc',type:'circle',source:'me-src',
-    paint:{'circle-radius':30,'circle-color':'#1A73E8','circle-opacity':.16}});
-  map.addLayer({id:'me-puck',type:'symbol',source:'me-src',
-    layout:{'icon-image':'puck','icon-size':0.42,
-      'icon-rotate':['get','bearing'],'icon-rotation-alignment':'map',
-      'icon-allow-overlap':true,'icon-ignore-placement':true}});
+    map.addSource('me-src', {type:'geojson', data:liveMe});
+    map.addLayer({id:'me-acc',type:'circle',source:'me-src',
+      paint:{'circle-radius':30,'circle-color':'#1A73E8','circle-opacity':.16}});
+    map.addLayer({id:'me-puck',type:'symbol',source:'me-src',
+      layout:{'icon-image':'puck','icon-size':0.42,
+        'icon-rotate':['get','bearing'],'icon-rotation-alignment':'map',
+        'icon-allow-overlap':true,'icon-ignore-placement':true}});
+  });
 }
 
 map.on('style.load', () => {
