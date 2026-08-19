@@ -365,7 +365,16 @@ const baseStyle = () => ARCGIS_KEY ? arcgisStyle(styleIx) : fallbackStyle;
 
 const map = new maplibregl.Map({
   container:'map', style: baseStyle(), center:[8,30], zoom:2, pitch:0,
-  attributionControl:{compact:true}
+  attributionControl:{compact:true},
+  /* The Esri style document points at sprites, glyphs and vector tiles that
+     are themselves protected. MapLibre fetches those directly, so the token
+     has to be appended to every arcgis.com request or they all 401 while the
+     style itself loads perfectly. */
+  transformRequest: (url) => {
+    if (ARCGIS_KEY && url.indexOf('.arcgis.com') > -1 && !/[?&]token=/.test(url))
+      return { url: url + (url.indexOf('?') > -1 ? '&' : '?') + 'token=' + ARCGIS_KEY };
+    return { url };
+  }
 });
 
 /* ---------- state ---------- */
@@ -733,6 +742,21 @@ $('#t-heading').onclick = e => {
   headingUp = !headingUp; e.currentTarget.classList.toggle('on', headingUp);
   if (!headingUp) map.easeTo({bearing:0, pitch:0, duration:700});
 };
+async function testKey(k){
+  try{
+    const r = await fetch('https://basemapstyles-api.arcgis.com/arcgis/rest/services/'
+      + 'styles/v2/styles/arcgis/navigation-night?token=' + encodeURIComponent(k));
+    const j = await r.json().catch(() => ({}));
+    if (j.error){
+      const d = (j.error.details && j.error.details.join(' ')) || '';
+      toast('Esri says: ' + j.error.message + (d ? ' \u2014 ' + d : ''), 9000);
+      return false;
+    }
+    if (!r.ok){ toast('Esri returned HTTP ' + r.status, 7000); return false; }
+    return true;
+  }catch(e){ toast('Could not reach Esri: ' + e.message, 7000); return false; }
+}
+
 function applyKey(k){
   ARCGIS_KEY = k.trim();
   try{
@@ -747,9 +771,11 @@ $('#t-key').onclick = () => {
   $('#keysheet').classList.add('on');
   $('#k').focus();
 };
-$('#k-save').onclick = () => {
+$('#k-save').onclick = async () => {
   const v = $('#k').value.trim();
   if (!v) return toast('No key entered yet');
+  toast('Checking key\u2026');
+  if (!(await testKey(v))) return;      // leave the sheet open on failure
   applyKey(v);
   $('#keysheet').classList.remove('on');
   toast('Esri basemap active');
