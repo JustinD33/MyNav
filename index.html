@@ -128,10 +128,12 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);
 .note{font-size:13px;line-height:1.5;color:var(--ink-dim);margin:14px 0 auto}
 .note b{color:var(--ink)}
 .row{display:flex;gap:10px;margin-bottom:10px}
-.btn{flex:1;padding:15px;text-align:center;border-radius:11px;background:var(--panel);
+.btn{flex:1 1 auto;padding:15px;text-align:center;border-radius:11px;background:var(--panel);
   border:1px solid var(--line);font-size:16px;cursor:pointer;user-select:none}
 .btn:active{background:var(--panel-hi)}
 .btn.primary{background:var(--route);border-color:var(--route);color:#06131C;font-weight:600}
+#k-close{flex:0 0 auto}
+#keysheet .note:last-of-type{margin-bottom:16px}
 
 #recentre{
   position:absolute;z-index:6;right:calc(var(--safe-r) + 16px);
@@ -148,7 +150,8 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);
 
 #toast{position:absolute;z-index:30;left:50%;top:calc(var(--safe-t) + 78px);
   transform:translateX(-50%);background:var(--panel);border:1px solid var(--line);
-  border-radius:9px;padding:11px 17px;font-size:14px;display:none;max-width:80%}
+  border-radius:9px;padding:11px 17px;font-size:14px;display:none;
+  max-width:min(88%,420px);line-height:1.4;word-break:break-word}
 #toast.on{display:block}
 /* ---------- phone portrait: stack across the top instead of a left column ---------- */
 @media (max-width:560px){
@@ -277,6 +280,8 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);
   <p class="note">Create one at location.arcgis.com. The key needs the
      <b>basemaps</b> privilege. It stays on this device and is sent nowhere
      except to Esri itself.</p>
+  <p class="note">If the key has a referrer restriction it must match this page
+     exactly:<br><b id="origin"></b></p>
   <div class="row">
     <div class="btn primary" id="k-save">Save</div>
     <div class="btn" id="k-clear">Clear</div>
@@ -749,7 +754,8 @@ async function testKey(k){
     const j = await r.json().catch(() => ({}));
     if (j.error){
       const d = (j.error.details && j.error.details.join(' ')) || '';
-      toast('Esri says: ' + j.error.message + (d ? ' \u2014 ' + d : ''), 9000);
+      toast('Esri ' + (j.error.code || '') + ': ' + j.error.message
+        + (d ? ' \u2014 ' + d : '') + '  |  this page is ' + location.origin, 12000);
       return false;
     }
     if (!r.ok){ toast('Esri returned HTTP ' + r.status, 7000); return false; }
@@ -758,7 +764,7 @@ async function testKey(k){
 }
 
 function applyKey(k){
-  ARCGIS_KEY = k.trim();
+  ARCGIS_KEY = k.replace(/\s+/g,'');
   try{
     if (ARCGIS_KEY) localStorage.setItem('mdt.arcgis', ARCGIS_KEY);
     else localStorage.removeItem('mdt.arcgis');
@@ -766,13 +772,15 @@ function applyKey(k){
   map.setStyle(ARCGIS_KEY ? arcgisStyle(styleIx) : fallbackStyle);
 }
 
+$('#origin').textContent = location.origin || 'file:// (no origin)';
+
 $('#t-key').onclick = () => {
   $('#k').value = ARCGIS_KEY;
   $('#keysheet').classList.add('on');
   $('#k').focus();
 };
 $('#k-save').onclick = async () => {
-  const v = $('#k').value.trim();
+  const v = $('#k').value.replace(/\s+/g,'');
   if (!v) return toast('No key entered yet');
   toast('Checking key\u2026');
   if (!(await testKey(v))) return;      // leave the sheet open on failure
